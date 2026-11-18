@@ -1,0 +1,17 @@
+# Maven build output
+**/target/
+
+# Java compiler output
+*.class
+
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# Logs
+*.log
