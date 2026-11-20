@@ -1,7 +1,7 @@
 package com.baka.trans;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.baka.dto.ServiceKey;
 
@@ -16,7 +16,7 @@ class ServiceRegistry {
 	private Map<ServiceKey, Object> map;
 
 	ServiceRegistry() {
-		map = new HashMap<>();
+		map = new ConcurrentHashMap<>();
 	}
 
 	// 注册服务

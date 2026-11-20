@@ -26,15 +26,7 @@ public class RpcClient {
 
 	// 获取动态代理的接口实现类
 	public <T> T getProxy(Class<T> service) {
-		if (!service.isInterface()) {
-			log.error("getProxy error:RpcClient.getProxy service must be a interface");
-			throw new IllegalArgumentException("RpcClient.getProxy service must be a interface");
-		}
-
-		ServiceKey serviceKey = new ServiceKey(service.getName(), ServiceKey.DEFAULT_GROUP, ServiceKey.DEFAULT_VERSION);
-		Object object = Proxy.newProxyInstance(service.getClassLoader(), new Class[] { service }, new RpcClientProxy(this, serviceKey));
-
-		return service.cast(object);
+		return getProxy(service, ServiceKey.DEFAULT_GROUP, ServiceKey.DEFAULT_VERSION);
 	}
 
 	// 获取动态代理的接口实现类
@@ -51,15 +43,15 @@ public class RpcClient {
 	}
 
 	RpcResp<?> sendReq(RpcReq req) {
-		try (Socket socket = new Socket(host, port)) {
+		try (Socket socket = new Socket(host, port);
+				ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+				ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
 			// 发送请求
-			ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
 			out.writeObject(req);
 			out.flush();
 			log.info("sent {} to server", req);
 
 			// 接受服务端响应
-			ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
 			RpcResp<?> resp = (RpcResp<?>) in.readObject();
 			log.info("received {} from server", resp);
 
