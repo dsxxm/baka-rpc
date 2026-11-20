@@ -22,12 +22,12 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class RpcServer {
 	private final int port;
-	private final ServiceRegistry serviceRegistry;
+	private final ServiceProviderRegistry serviceProviderRegistry;
 	private final ThreadPoolExecutor pool;
 
 	public RpcServer(int port) {
 		this.port = port;
-		this.serviceRegistry = new ServiceRegistry();
+		this.serviceProviderRegistry = new ServiceProviderRegistry();
 		int cpuNum = Runtime.getRuntime().availableProcessors();
 		this.pool = new ThreadPoolExecutor(cpuNum, 2 * cpuNum, 60L, TimeUnit.SECONDS, new ArrayBlockingQueue<>(128), new ThreadPoolExecutor.CallerRunsPolicy());
 	}
@@ -41,7 +41,7 @@ public class RpcServer {
 			log.error("RpcServer: service must implement serviceInterface");
 			throw new IllegalArgumentException("service must implement serviceInterface");
 		}
-		serviceRegistry.register(new ServiceKey(serviceInterface.getName(), group, version), service);
+		serviceProviderRegistry.registerProvider(new ServiceKey(serviceInterface.getName(), group, version), service);
 	}
 
 	public <T> void register(Class<T> serviceInterface, T service) {
@@ -76,7 +76,7 @@ public class RpcServer {
 
 	private RpcResp<?> invokeService(RpcReq req) {
 		try {
-			Object service = serviceRegistry.getService(req.getServiceKey());
+			Object service = serviceProviderRegistry.getProvider(req.getServiceKey());
 			if (service == null) {
 				throw new IllegalStateException("service not found: " + req.getServiceKey());
 			}
