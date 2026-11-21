@@ -1,6 +1,7 @@
 package com.baka.trans;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.baka.dto.ServiceKey;
@@ -26,5 +27,9 @@ class ServiceProviderRegistry {
 
 	Object getProvider(ServiceKey serviceKey) {
 		return providers.get(serviceKey);
+	}
+
+	Set<ServiceKey> getServiceKeys() {
+		return providers.keySet();
 	}
 }

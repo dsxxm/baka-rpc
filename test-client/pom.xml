@@ -19,6 +19,11 @@
             <artifactId>rpc-core</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.baka</groupId>
+            <artifactId>rpc-redis</artifactId>
+            <version>${project.version}</version>
+        </dependency>
 				<dependency>
 						<groupId>com.baka</groupId>
 						<artifactId>test-api</artifactId>

@@ -8,11 +8,12 @@ import com.baka.dto.RpcReq;
 import com.baka.dto.RpcResp;
 import com.baka.dto.ServiceKey;
 
-import jdk.internal.org.jline.utils.Log;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * RpcClientProxy 通过动态代理的方式 对接口原方法进行包装
  */
+@Slf4j
 public class RpcClientProxy implements InvocationHandler {
 
 	private final RpcClient rpcClient;
@@ -28,12 +29,12 @@ public class RpcClientProxy implements InvocationHandler {
 		// 拼装请求
 		RpcReq req = new RpcReq(UUID.randomUUID().toString(), serviceKey, method.getName(), args, method.getParameterTypes());
 		// 发送请求
-		RpcResp<?> resp = rpcClient.sendReq(req);
+		RpcResp<?> resp = rpcClient.invoke(req);
 
 		if (RpcResp.isSuccess(resp)) {
 			return resp.getData();
 		} else {
-			Log.error("get failed response from server");
+			log.error("get failed response from server");
 			throw new Exception("get failed response from server");
 		}
 	}
