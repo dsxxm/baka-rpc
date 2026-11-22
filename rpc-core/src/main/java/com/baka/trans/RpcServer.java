@@ -1,26 +1,35 @@
 package com.baka.trans;
 
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.lang.reflect.Method;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.baka.dto.RpcReq;
 import com.baka.dto.RpcResp;
 import com.baka.dto.ServiceKey;
+import com.baka.protocol.RpcMessage;
 import com.baka.registry.ServiceInstance;
 import com.baka.registry.ServiceRegistry;
+import com.baka.web.RpcMessageDecoder;
+import com.baka.web.RpcMessageEncoder;
+import com.baka.web.RpcRequestHandler;
 
+import io.netty.bootstrap.ServerBootstrap;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollServerSocketChannel;
+import io.netty.channel.socket.SocketChannel;
+import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -33,24 +42,24 @@ public class RpcServer {
 	private final String instanceId;
 	private final ServiceProviderRegistry serviceProviderRegistry;
 	private final ServiceRegistry serviceRegistry;
-	// 为socket准备的线程池
+	private final byte codec;
+	// 为业务调用准备的线程池
 	private final ThreadPoolExecutor pool;
 	// 为定时心跳准备的线程池
 	private final ScheduledExecutorService scheduler;
 
+	private volatile Channel serverChannel;
+	private final Set<ServiceInstance> serviceInstances = ConcurrentHashMap.newKeySet();
+	private final AtomicBoolean registryClosed = new AtomicBoolean();
 	private final long HEARTBEAT_INTERVAL = 10_000L;
 
-	/**
-	 * @param host
-	 * @param port
-	 * @param serviceRegistry
-	 */
-	public RpcServer(String host, int port, ServiceRegistry serviceRegistry) {
+	public RpcServer(String host, int port, ServiceRegistry serviceRegistry, byte codec) {
 		this.host = host;
 		this.port = port;
 		this.instanceId = UUID.randomUUID().toString();
 		this.serviceProviderRegistry = new ServiceProviderRegistry();
 		this.serviceRegistry = serviceRegistry;
+		this.codec = codec;
 		int cpuNum = Runtime.getRuntime().availableProcessors();
 		this.pool = new ThreadPoolExecutor(cpuNum, 2 * cpuNum, 60L, TimeUnit.SECONDS, new ArrayBlockingQueue<>(128), new ThreadPoolExecutor.CallerRunsPolicy());
 		this.scheduler = Executors.newScheduledThreadPool(1);
@@ -58,6 +67,38 @@ public class RpcServer {
 
 	public String getInstanceId() {
 		return instanceId;
+	}
+
+	public void close() {
+		Channel channel = serverChannel;
+		if (channel != null) {
+			channel.close().syncUninterruptibly();
+		}
+		shutdownRegistry();
+	}
+
+	private void shutdownRegistry() {
+		if (!registryClosed.compareAndSet(false, true)) {
+			return;
+		}
+
+		scheduler.shutdown();
+		try {
+			if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+				scheduler.shutdownNow();
+			}
+		} catch (InterruptedException e) {
+			scheduler.shutdownNow();
+			Thread.currentThread().interrupt();
+		}
+
+		for (ServiceInstance instance : serviceInstances) {
+			try {
+				serviceRegistry.unregister(instance);
+			} catch (Exception e) {
+				log.error("failed to unregister {}", instance, e);
+			}
+		}
 	}
 
 	public <T> void register(Class<T> serviceInterface, T service, String group, String version) {
@@ -77,20 +118,47 @@ public class RpcServer {
 	}
 
 	public void start() {
-		try (ServerSocket serverSocket = new ServerSocket(port)) {
+		EventLoopGroup parentGroup = new EpollEventLoopGroup(1);
+		EventLoopGroup childrenGroup = new EpollEventLoopGroup(4);
+
+		try {
+			ServerBootstrap bootstrap = new ServerBootstrap();
+			bootstrap.group(parentGroup, childrenGroup)
+					.channel(EpollServerSocketChannel.class)
+					.childOption(ChannelOption.TCP_NODELAY, true)
+					.childOption(ChannelOption.SO_KEEPALIVE, true)
+					.childHandler(new ChannelInitializer<SocketChannel>() {
+						@Override
+						protected void initChannel(SocketChannel channel) {
+							channel.pipeline()
+									.addLast(new LengthFieldBasedFrameDecoder(
+											RpcMessage.HEADER_LENGTH + RpcMessage.MAX_BODY_LENGTH,
+											7,
+											4,
+											0,
+											0
+									))
+									.addLast(new RpcMessageDecoder(RpcMessage.MessageType.REQUEST))
+									.addLast(new RpcMessageEncoder(codec))
+									.addLast(new RpcRequestHandler(RpcServer.this::invokeService, pool));
+						}
+					});
+
+			serverChannel = bootstrap.bind(port).sync().channel();
 			log.info("server start on {}:{}", host, port);
 
-			// 将服务注册到redis中
-			Set<ServiceKey> serviceKeys = serviceProviderRegistry.getServiceKeys();
-			Set<ServiceInstance> serviceInstances = new HashSet<ServiceInstance>();
-			for (ServiceKey serviceKey : serviceKeys) {
+			for (ServiceKey serviceKey : serviceProviderRegistry.getServiceKeys()) {
 				ServiceInstance instance = new ServiceInstance(serviceKey, instanceId, host, port);
 				serviceInstances.add(instance);
 				serviceRegistry.register(instance);
 			}
 
-			// 定期向所有服务发送心跳请求
 			scheduler.scheduleAtFixedRate(() -> {
+				if (!serverChannel.isActive()) {
+					log.warn("server channel is closed; skipping heartbeat");
+					return;
+				}
+
 				for (ServiceInstance instance : serviceInstances) {
 					try {
 						serviceRegistry.heartbeat(instance);
@@ -100,27 +168,17 @@ public class RpcServer {
 				}
 			}, HEARTBEAT_INTERVAL, HEARTBEAT_INTERVAL, TimeUnit.MILLISECONDS);
 
-			// 接受并处理RpcClient的请求 返回响应
-			while (true) {
-				Socket clientSocket = serverSocket.accept();
-				pool.execute(() -> handleClient(clientSocket));
-			}
-		} catch (IOException e) {
-			log.error("RPC server stopped", e);
-		}
-	}
+			serverChannel.closeFuture().sync();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			log.error("RPC server interrupted", e);
+		} finally {
+			shutdownRegistry();
 
-	private void handleClient(Socket socket) {
-		try (Socket clientSocket = socket; ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream()); ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream())) {
-			RpcReq req = (RpcReq) in.readObject();
-			log.info("received {} from client", req);
-
-			RpcResp<?> resp = invokeService(req);
-			out.writeObject(resp);
-			out.flush();
-			log.info("send {} to client", resp);
-		} catch (IOException | ClassNotFoundException e) {
-			log.error("RPC request processing failed", e);
+			pool.shutdown();
+			childrenGroup.shutdownGracefully().syncUninterruptibly();
+			parentGroup.shutdownGracefully().syncUninterruptibly();
+			serverChannel = null;
 		}
 	}
 

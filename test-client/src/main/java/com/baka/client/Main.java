@@ -11,6 +11,8 @@ import java.util.concurrent.TimeUnit;
 import com.baka.api.dto.User;
 import com.baka.api.service.UserService;
 import com.baka.Registry.RedisServiceRegistry;
+import com.baka.protocol.RpcMessage;
+
 import com.baka.registry.RoundRobinLoadBalancer;
 import com.baka.trans.RpcClient;
 
@@ -25,19 +27,18 @@ public class Main {
 	private static final int REQUEST_COUNT = 100;
 
 	public static void main(String[] args) throws Exception {
-		try (RedisServiceRegistry registry = new RedisServiceRegistry("localhost", 6379)) {
-			RpcClient client = new RpcClient(registry, new RoundRobinLoadBalancer());
-			UserService userService = client.getProxy(UserService.class);
-			User user = userService.getUser(1L);
-			log.info("succeed to recevie {}", user);
-		}
+		RedisServiceRegistry registry = new RedisServiceRegistry("localhost", 6379);
+		RpcClient client = new RpcClient(registry, new RoundRobinLoadBalancer(), RpcMessage.Codec.JAVA);
+		UserService userService = client.getProxy(UserService.class);
+		User user = userService.getUser(1L);
+		client.close();
+		log.info("succeed to recevie {}", user);
 	}
 
 	private void testConcurrency() throws Exception {
 		log.info("test client starting with {} concurrent workers and {} requests", CONCURRENCY, REQUEST_COUNT);
 
-		try (RedisServiceRegistry registry = new RedisServiceRegistry("localhost", 6379)) {
-			RpcClient client = new RpcClient(registry, new RoundRobinLoadBalancer());
+		try (RedisServiceRegistry registry = new RedisServiceRegistry("localhost", 6379); RpcClient client = new RpcClient(registry, new RoundRobinLoadBalancer(), RpcMessage.Codec.JAVA)) {
 			UserService userService = client.getProxy(UserService.class);
 			ExecutorService executor = Executors.newFixedThreadPool(CONCURRENCY);
 			CountDownLatch start = new CountDownLatch(1);

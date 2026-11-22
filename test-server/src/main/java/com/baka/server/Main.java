@@ -4,6 +4,8 @@ import com.baka.server.service.UserServiceImpl;
 import com.baka.Registry.RedisServiceRegistry;
 import com.baka.api.service.UserService;
 
+import com.baka.protocol.RpcMessage;
+
 import com.baka.trans.RpcServer;
 
 import lombok.extern.slf4j.Slf4j;
@@ -25,10 +27,11 @@ public class Main {
 		}
 
 		log.info("test server starting on port {}......", port);
-		RpcServer server = new RpcServer("localhost", port, new RedisServiceRegistry("localhost", 6379));
+		RpcServer server = new RpcServer("localhost", port, new RedisServiceRegistry("localhost", 6379), RpcMessage.Codec.JAVA);
 
 		UserServiceImpl service = new UserServiceImpl();
 		server.register(UserService.class, service);
+		Runtime.getRuntime().addShutdownHook(new Thread(server::close, "rpc-server-shutdown"));
 		server.start();
 	}
 }
