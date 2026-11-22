@@ -19,11 +19,6 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public final class RpcMessageDecoder extends MessageToMessageDecoder<ByteBuf> {
 
-	private final byte expectedMessageType;
-
-	public RpcMessageDecoder(byte expectedMessageType) {
-		this.expectedMessageType = expectedMessageType;
-	}
 
 	@Override
 	protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
@@ -38,9 +33,6 @@ public final class RpcMessageDecoder extends MessageToMessageDecoder<ByteBuf> {
 		}
 
 		byte messageType = in.readByte();
-		if (messageType != expectedMessageType) {
-			throw new DecoderException("unexpected RPC message type: " + messageType);
-		}
 
 		byte codec = in.readByte();
 
@@ -57,10 +49,19 @@ public final class RpcMessageDecoder extends MessageToMessageDecoder<ByteBuf> {
 		log.info("received {}", message);
 
 		try {
-			if (messageType == RpcMessage.MessageType.REQUEST) {
-				out.add(RpcSerialization.deserialize(codec, message.getBody(), RpcReq.class));
-			} else {
-				out.add(RpcSerialization.deserialize(codec, message.getBody(), RpcResp.class));
+			switch (messageType) {
+				case RpcMessage.MessageType.REQUEST:
+					out.add(RpcSerialization.deserialize(codec, message.getBody(), RpcReq.class));
+					return;
+				case RpcMessage.MessageType.RESPONSE:
+					out.add(RpcSerialization.deserialize(codec, message.getBody(), RpcResp.class));
+					return;
+				case RpcMessage.MessageType.HEARTBEAT_REQUEST:
+				case RpcMessage.MessageType.HEARTBEAT_RESPONSE:
+					out.add(message);
+					return;
+				default:
+					throw new DecoderException("unsupported RPC message type: " + messageType);
 			}
 		} catch (IllegalArgumentException e) {
 			throw new DecoderException(e.getMessage(), e);

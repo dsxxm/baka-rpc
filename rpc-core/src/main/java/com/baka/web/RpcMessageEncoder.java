@@ -22,22 +22,27 @@ public final class RpcMessageEncoder extends MessageToByteEncoder<Object> {
 
 	@Override
 	public boolean acceptOutboundMessage(Object message) {
-		return message instanceof RpcReq || message instanceof RpcResp;
+		return message instanceof RpcReq || message instanceof RpcResp || message instanceof RpcMessage;
 	}
 
 	@Override
 	protected void encode(ChannelHandlerContext ctx, Object payload, ByteBuf out) {
-		byte messageType;
-		if (payload instanceof RpcReq) {
-			messageType = RpcMessage.MessageType.REQUEST;
-		} else if (payload instanceof RpcResp) {
-			messageType = RpcMessage.MessageType.RESPONSE;
+		RpcMessage message;
+		if (payload instanceof RpcMessage) {
+			message = (RpcMessage) payload;
 		} else {
-			throw new EncoderException("unsupported RPC payload: " + payload.getClass().getName());
-		}
+			byte messageType;
+			if (payload instanceof RpcReq) {
+				messageType = RpcMessage.MessageType.REQUEST;
+			} else if (payload instanceof RpcResp) {
+				messageType = RpcMessage.MessageType.RESPONSE;
+			} else {
+				throw new EncoderException("unsupported RPC payload: " + payload.getClass().getName());
+			}
 
-		byte[] body = RpcSerialization.serialize(codec, payload);
-		RpcMessage message = new RpcMessage(messageType, codec, body);
+			byte[] body = RpcSerialization.serialize(codec, payload);
+			message = new RpcMessage(messageType, codec, body);
+		}
 
 		out.writeInt(message.getMagic());
 		out.writeByte(message.getVersion());

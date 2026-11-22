@@ -1,8 +1,7 @@
 package com.baka.web;
 
-import java.util.concurrent.CompletableFuture;
-
 import com.baka.dto.RpcResp;
+import com.baka.trans.ChannelManager;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -12,26 +11,19 @@ import io.netty.channel.SimpleChannelInboundHandler;
  */
 public final class RpcResponseHandler extends SimpleChannelInboundHandler<RpcResp<?>> {
 
-	private final CompletableFuture<RpcResp<?>> responseFuture;
+	private final ChannelManager channelManager;
 
-	public RpcResponseHandler(CompletableFuture<RpcResp<?>> responseFuture) {
-		this.responseFuture = responseFuture;
+	public RpcResponseHandler(ChannelManager channelManager) {
+		this.channelManager = channelManager;
 	}
 
 	@Override
 	protected void channelRead0(ChannelHandlerContext ctx, RpcResp<?> resp) {
-		responseFuture.complete(resp);
-		ctx.close();
-	}
-
-	@Override
-	public void channelInactive(ChannelHandlerContext ctx) {
-		responseFuture.completeExceptionally(new IllegalStateException("RPC channel closed before response"));
+		channelManager.completeResponse(resp);
 	}
 
 	@Override
 	public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-		responseFuture.completeExceptionally(cause);
 		ctx.close();
 	}
 }

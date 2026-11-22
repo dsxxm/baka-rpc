@@ -20,6 +20,7 @@ import com.baka.registry.ServiceRegistry;
 import com.baka.web.RpcMessageDecoder;
 import com.baka.web.RpcMessageEncoder;
 import com.baka.web.RpcRequestHandler;
+import com.baka.web.ServerHeartbeatHandler;
 
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
@@ -30,6 +31,7 @@ import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
+import io.netty.handler.timeout.IdleStateHandler;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -138,8 +140,10 @@ public class RpcServer {
 											0,
 											0
 									))
-									.addLast(new RpcMessageDecoder(RpcMessage.MessageType.REQUEST))
+									.addLast(new RpcMessageDecoder())
 									.addLast(new RpcMessageEncoder(codec))
+									.addLast(new IdleStateHandler(30, 0, 0, TimeUnit.SECONDS))
+									.addLast(new ServerHeartbeatHandler(codec))
 									.addLast(new RpcRequestHandler(RpcServer.this::invokeService, pool));
 						}
 					});
