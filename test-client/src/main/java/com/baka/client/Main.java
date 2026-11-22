@@ -8,7 +8,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import com.baka.api.dto.User;
+import com.baka.api.protobuf.UserProto.GetUserRequest;
+import com.baka.api.protobuf.UserProto.User;
 import com.baka.api.service.UserService;
 import com.baka.Registry.RedisServiceRegistry;
 import com.baka.protocol.RpcMessage;
@@ -28,9 +29,9 @@ public class Main {
 
 	public static void main(String[] args) throws Exception {
 		RedisServiceRegistry registry = new RedisServiceRegistry("localhost", 6379);
-		RpcClient client = new RpcClient(registry, new RoundRobinLoadBalancer(), RpcMessage.Codec.JAVA);
+		RpcClient client = new RpcClient(registry, new RoundRobinLoadBalancer(), RpcMessage.Codec.PROTOBUF);
 		UserService userService = client.getProxy(UserService.class);
-		User user = userService.getUser(1L);
+		User user = userService.getUser(GetUserRequest.newBuilder().setId(1L).build());
 		client.close();
 		log.info("succeed to recevie {}", user);
 	}
@@ -38,7 +39,7 @@ public class Main {
 	private void testConcurrency() throws Exception {
 		log.info("test client starting with {} concurrent workers and {} requests", CONCURRENCY, REQUEST_COUNT);
 
-		try (RedisServiceRegistry registry = new RedisServiceRegistry("localhost", 6379); RpcClient client = new RpcClient(registry, new RoundRobinLoadBalancer(), RpcMessage.Codec.JAVA)) {
+		try (RedisServiceRegistry registry = new RedisServiceRegistry("localhost", 6379); RpcClient client = new RpcClient(registry, new RoundRobinLoadBalancer(), RpcMessage.Codec.PROTOBUF)) {
 			UserService userService = client.getProxy(UserService.class);
 			ExecutorService executor = Executors.newFixedThreadPool(CONCURRENCY);
 			CountDownLatch start = new CountDownLatch(1);
@@ -49,7 +50,7 @@ public class Main {
 					long userId = id;
 					futures.add(executor.submit(() -> {
 						start.await();
-						return userService.getUser(userId);
+						return userService.getUser(GetUserRequest.newBuilder().setId(userId).build());
 					}));
 				}
 

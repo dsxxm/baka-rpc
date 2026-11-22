@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package baka.api;
+
+option java_package = "com.baka.api.protobuf";
+option java_outer_classname = "UserProto";
+
+message GetUserRequest {
+  int64 id = 1;
+}
+
+message User {
+  int64 id = 1;
+  string name = 2;
+}

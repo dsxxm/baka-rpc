@@ -27,7 +27,7 @@ public class Main {
 		}
 
 		log.info("test server starting on port {}......", port);
-		RpcServer server = new RpcServer("localhost", port, new RedisServiceRegistry("localhost", 6379), RpcMessage.Codec.JAVA);
+		RpcServer server = new RpcServer("localhost", port, new RedisServiceRegistry("localhost", 6379), RpcMessage.Codec.PROTOBUF);
 
 		UserServiceImpl service = new UserServiceImpl();
 		server.register(UserService.class, service);

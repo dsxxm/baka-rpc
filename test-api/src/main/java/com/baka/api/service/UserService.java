@@ -1,11 +1,12 @@
 package com.baka.api.service;
 
-import com.baka.api.dto.User;
+import com.baka.api.protobuf.UserProto.GetUserRequest;
+import com.baka.api.protobuf.UserProto.User;
 
 /**
  * UserService
  */
 public interface UserService {
 
-	public User getUser(Long id);
+	User getUser(GetUserRequest request);
 }

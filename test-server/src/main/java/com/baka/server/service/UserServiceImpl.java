@@ -1,6 +1,7 @@
 package com.baka.server.service;
 
-import com.baka.api.dto.User;
+import com.baka.api.protobuf.UserProto.GetUserRequest;
+import com.baka.api.protobuf.UserProto.User;
 import com.baka.api.service.UserService;
 
 /**
@@ -9,8 +10,8 @@ import com.baka.api.service.UserService;
 public class UserServiceImpl implements UserService {
 
 	@Override
-	public User getUser(Long id) {
-		return new User(1L, "bakaxxm");
+	public User getUser(GetUserRequest request) {
+		return User.newBuilder().setId(request.getId()).setName("bakaxxm").build();
 	}
 
 }
